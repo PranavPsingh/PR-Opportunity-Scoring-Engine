@@ -3,6 +3,11 @@ export type ApiErrorPayload = {
   message?: string;
 };
 
+export type ApiEnvelope<T> = {
+  status: "ok";
+  data: T;
+};
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -34,6 +39,14 @@ export class ApiClient {
     return this.request<T>(path, { ...init, method: "GET" });
   }
 
+  async post<T>(path: string, body?: unknown, init?: RequestInit): Promise<T> {
+    return this.request<T>(path, {
+      ...init,
+      method: "POST",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  }
+
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
@@ -48,6 +61,7 @@ export class ApiClient {
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}/${path.replace(/^\//, "")}`, {
+        credentials: "include",
         ...init,
         headers,
       });

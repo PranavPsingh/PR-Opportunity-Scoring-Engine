@@ -22,7 +22,10 @@ body {
 .nav-links a, .nav-links span { color: #c9d1df; font-size: 1rem; }
 .nav-links a { color: #fff; text-decoration: none; }
 .nav-links [aria-disabled="true"] { cursor: not-allowed; opacity: .6; }
+.nav-user { align-items: center; color: #fff; display: flex; gap: 1rem; margin-left: auto; }
+.nav-user button { background: transparent; border: 1px solid #71809a; border-radius: .4rem; color: #fff; cursor: pointer; font: inherit; padding: .4rem .7rem; }
 .app-content { margin: 0 auto; max-width: 88rem; padding: 7rem 3rem; width: 100%; }
+.auth-loading { align-items: center; color: #526076; display: flex; justify-content: center; min-height: 100vh; }
 .dashboard-intro { max-width: 64rem; }
 .eyebrow { color: #526a94; font-size: 1rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
 h1 { font-size: clamp(3rem, 6vw, 5.5rem); letter-spacing: -.04em; line-height: 1.03; margin: .75rem 0 2rem; }
@@ -31,10 +34,20 @@ h1 { font-size: clamp(3rem, 6vw, 5.5rem); letter-spacing: -.04em; line-height: 1
 .status-card { background: #fff; border: 1px solid #e0e4eb; border-radius: 1rem; padding: 2.25rem; }
 .status-card h2 { font-size: 1.4rem; margin: 0 0 1rem; }
 .status-card p { color: #526076; font-size: 1.1rem; line-height: 1.65; margin: 0; }
+.login-page { align-items: center; display: flex; justify-content: center; min-height: 100vh; padding: 2rem; }
+.login-card { background: #fff; border: 1px solid #e0e4eb; border-radius: 1rem; max-width: 32rem; padding: 3rem; width: 100%; }
+.login-card h1 { font-size: clamp(2.5rem, 6vw, 4.25rem); margin-bottom: 1rem; }
+.login-form { display: grid; gap: .65rem; margin-top: 2rem; }
+.login-form label { color: #27354d; font-weight: 700; margin-top: .65rem; }
+.login-form input { border: 1px solid #b9c2d0; border-radius: .45rem; font: inherit; padding: .75rem; }
+.primary-button { background: #172033; border: 0; border-radius: .45rem; color: #fff; cursor: pointer; font: inherit; font-weight: 700; margin-top: 1rem; padding: .8rem 1rem; }
+.primary-button:disabled { cursor: wait; opacity: .65; }
+.form-error { color: #b42318; margin: .5rem 0 0; }
 
 @media (max-width: 640px) {
   .app-navigation { align-items: flex-start; flex-direction: column; gap: .75rem; padding: 1.25rem 1.5rem; }
   .nav-links { gap: .9rem 1.25rem; }
+  .nav-user { margin-left: 0; }
   .app-content { padding: 4rem 1.5rem; }
   .status-grid { grid-template-columns: 1fr; }
 }

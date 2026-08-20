@@ -109,3 +109,17 @@ GET /api/v1/health/
 ```
 
 Both return a successful JSON response containing `"status": "ok"`. Backend API views should use `services.api_responses` for the standard success/error envelopes and keep validation, authorization hooks, and business rules out of views. The frontend centralizes authentication-token injection and API errors in `lib/api/client.ts`.
+
+## Demo login accounts
+
+Running `python manage.py migrate` seeds five development accounts for the login page. Each account uses the password `PathosDemo2026!`.
+
+| Name | Email | Role |
+| --- | --- | --- |
+| Avery Admin | `admin@pathos.local` | Admin |
+| Alex Consultant | `alex@pathos.local` | Consultant |
+| Jamie Consultant | `jamie@pathos.local` | Consultant |
+| Morgan Consultant | `morgan@pathos.local` | Consultant |
+| Taylor Consultant | `taylor@pathos.local` | Consultant |
+
+The admin can promote or demote other users and delete accounts from the dashboard. The last active admin cannot be demoted or deleted.
