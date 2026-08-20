@@ -1,164 +1,111 @@
-# PR Opportunity Scoring Engine
- 
-A decision-support tool that scores prospective PR opportunities before a consultancy commits time or resources to pitching them.
- 
-Given structured details about a client and their story (funding, industry, founder availability, product stage, etc.), the engine returns an overall opportunity score, a breakdown across five weighted dimensions, ranked pitch angles, and a concrete recommendation for what would make the story stronger.
- 
-Built for pay-on-results PR models, where taking on a weak story is a direct commercial loss, not just a missed opportunity.
- 
----
- 
-## Why
- 
-Consultants currently judge "is this publishable?" on instinct. That doesn't scale, isn't consistent across consultants, and gives the client no structured feedback on how to improve their pitch. This tool turns that judgment call into a repeatable, explainable process — one that surfaces *why* a story scores the way it does, not just a number.
- 
----
- 
-## Example
- 
-**Input**
- 
+# Pathos PR Opportunity Scoring Engine
+
+A decision-support application for evaluating prospective PR opportunities before a consultancy commits time to pitching them. The future scoring engine will remain rules-based and explainable, with AI-assisted capabilities kept separate from the scoring core.
+
+## Current foundation
+
+The repository establishes the platform on which client, opportunity, scoring, angle, evidence, outcome, authentication, and AI/LLM domains can be built. It intentionally does **not** implement those product features yet.
+
+- Django 6.1 provides the backend and a versioned API foundation.
+- Next.js 16 (App Router) provides the frontend shell and reusable UI structure.
+- Docker Compose runs the frontend and backend as separate services.
+- SQLite remains the default development database; database settings are environment-driven.
+
+## Architecture
+
 ```
-Industry:        AI / SaaS
-Location:         Dubai, UAE
-Funding:          $5M Series A
-Founder:          Available for interviews
-Product status:   Launched 3 months ago
-Customer data:    Not provided
-```
- 
-**Output**
- 
-```
-PR OPPORTUNITY SCORE
-Overall: 87/100
- 
-Newsworthiness       92
-Media Appeal         88
-Timeliness           94
-Credibility          81
-Audience Interest    85
- 
-RECOMMENDED ANGLES
-1. Funding announcement        — Potential: HIGH
-2. UAE AI ecosystem story      — Potential: HIGH
-3. Founder thought leadership  — Potential: MEDIUM
-4. Product announcement        — Potential: LOW
- 
-WHAT WOULD MAKE THIS STRONGER
-Weakness: No independent customer data.
-Recommendation: Provide 2-3 measurable results from existing
-customers (e.g. % efficiency gain, revenue impact, retention).
-```
- 
----
- 
-## How Scoring Works
- 
-Scoring is **rules-based and transparent** — not a black box. Every input field maps to point contributions across five dimensions via a defined rubric, so every score is fully explainable and defensible to a client who asks "why 87?"
- 
-| Dimension | Captures |
-|---|---|
-| Newsworthiness | Is there an actual news hook (funding, launch, milestone)? |
-| Timeliness | Does this connect to a live news cycle or trend? |
-| Credibility | Can the claims be substantiated? |
-| Media Appeal | Is there a human angle, visual hook, or novelty? |
-| Audience Interest | Does this matter to a broad or influential readership? |
- 
-An LLM layer (v2+) is planned for parsing free-text client briefs into structured input and generating qualitative reasoning — but the numeric scoring itself stays rule-based, so the system remains auditable as it grows.
- 
-See [`PR_Opportunity_Scoring_Engine_Project_Description.md`](./PR_Opportunity_Scoring_Engine_Project_Description.md) for the full scoring rubric, methodology, and roadmap.
- 
----
- 
-## Tech Stack
- 
-| Layer | Choice |
-|---|---|
-| Frontend | React |
-| Backend | Django (or lightweight Node/Express) |
-| Database | PostgreSQL |
-| LLM layer (v2+) | Gemini / Claude API, structured JSON output |
-| Deployment | Docker, GCP |
- 
----
- 
-## Project Status
- 
-🚧 **In development — MVP stage**
- 
-- [ ] Structured intake form
-- [ ] Rules-based scoring engine (5 dimensions)
-- [ ] Score + breakdown UI
-- [ ] Angle ranking against angle library
-- [ ] Single weakness + recommendation output
-- [ ] Save/compare scored opportunities over time
----
- 
-## Getting Started
- 
-```bash
-# Clone the repo
-git clone <repo-url>
-cd pr-opportunity-scoring-engine
- 
-# Backend
-cd backend
-# install dependencies, configure .env, run migrations
- 
-# Frontend
-cd Frontend/pr_scoring_enginge
-npm install
-npm run dev
+Browser
+  └── Next.js frontend (:3000)
+        └── Django API (:8000)
+              └── SQLite by default (or a configured Django database backend)
 ```
 
-### Docker
+The backend domain packages live in `Backend/apps/`. HTTP views are deliberately thin; future business logic belongs in `Backend/services/`. The frontend keeps routes in `app/`, shared UI in `components/`, and API access in `lib/api/`.
 
-The Docker setup runs the Next.js frontend and Django backend. The Django
-project currently uses its configured SQLite database.
+## Repository structure
+
+```
+Backend/
+  apps/             Domain packages and the API endpoint layer
+  services/         Reusable business services
+  myproject/        Django settings and root URLs
+Frontend/pr_scoring_enginge/
+  app/              Next.js App Router routes and boundaries
+  components/       Shared application and UI components
+  lib/api/          Reusable API client
+docker-compose.yml  Local two-service orchestration
+```
+
+## Environment variables
+
+Use the example files as a list of required values. Configure them in your shell, deployment platform, or Docker environment; Django and Next.js do not load a `.env` file automatically in this repository. Do not commit `.env` files.
+
+```powershell
+Copy-Item Backend/.env.example Backend/.env
+Copy-Item Frontend/pr_scoring_enginge/.env.example Frontend/pr_scoring_enginge/.env.local
+```
+
+Backend variables:
+
+- `DJANGO_DEBUG` — `true` for local development.
+- `DJANGO_SECRET_KEY` — required when `DJANGO_DEBUG=false`.
+- `DJANGO_ALLOWED_HOSTS` — comma-separated hostnames.
+- `DJANGO_TIME_ZONE` — IANA timezone, default `UTC`.
+- `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_HOST`, `DATABASE_PORT` — standard Django database configuration. SQLite is the default; another backend also needs its Python driver installed.
+
+Frontend variables:
+
+- `NEXT_PUBLIC_API_BASE_URL` — browser-visible base URL for the versioned API, default `http://localhost:8000/api/v1`.
+
+## Run with Docker
 
 ```bash
 docker compose up --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) for the frontend and
-[http://localhost:8000/admin/](http://localhost:8000/admin/) for Django. Stop
-the application with `docker compose down`.
- 
-### Environment Variables
- 
+Open `http://localhost:3000` for the frontend. Django is available at `http://localhost:8000`, and its backend container includes a health check. Stop services with `docker compose down`.
+
+## Run locally
+
+Backend (from `Backend/`):
+
+```bash
+python -m pip install -r requirements.txt
+python manage.py migrate
+python manage.py runserver
 ```
-DATABASE_URL=
-LLM_API_KEY=        # required from v2 onward
+
+Frontend (from `Frontend/pr_scoring_enginge/`):
+
+```bash
+npm ci
+npm run dev
 ```
- 
----
- 
-## Project Structure
- 
+
+## Checks and tests
+
+Backend (from `Backend/`):
+
+```bash
+python manage.py check
+python manage.py test
 ```
-pr-opportunity-scoring-engine/
-├── backend/
-│   ├── scoring/          # rubric logic, dimension calculators
-│   ├── angles/            # angle library + matching logic
-│   ├── api/                # endpoints for scoring, history
-│   └── models/            # Opportunity, Score, Angle
-├── frontend/
-│   ├── src/
-│   │   ├── components/    # intake form, score dashboard, angle cards
-│   │   └── pages/
-└── docs/
-    └── PR_Opportunity_Scoring_Engine_Project_Description.md
+
+Frontend (from `Frontend/pr_scoring_enginge/`):
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build
 ```
- 
-*(Structure is a proposed starting point — adjust as the build evolves.)*
- 
----
- 
-## Roadmap
- 
-**v1 (MVP)** — rules-based scoring, structured intake, angle ranking, single weakness/recommendation
-**v2** — free-text intake parsed by LLM, multiple weaknesses, configurable rubric weights, side-by-side comparison
-**v3** — outcome feedback loop (log actual publish/no-publish results to recalibrate rubric weights over time), journalist/outlet fit suggestions
- 
----
+
+## API foundation
+
+The public API is versioned under `/api/v1/`. The unauthenticated health endpoint is also exposed at the stable deployment path below:
+
+```http
+GET /api/health/
+GET /api/v1/health/
+```
+
+Both return a successful JSON response containing `"status": "ok"`. Backend API views should use `services.api_responses` for the standard success/error envelopes and keep validation, authorization hooks, and business rules out of views. The frontend centralizes authentication-token injection and API errors in `lib/api/client.ts`.

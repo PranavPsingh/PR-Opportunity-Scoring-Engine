@@ -15,6 +15,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+!Frontend/pr_scoring_enginge/lib/
+!Frontend/pr_scoring_enginge/lib/api/
+!Frontend/pr_scoring_enginge/lib/api/client.ts
 lib64/
 parts/
 sdist/
@@ -149,6 +152,9 @@ activemq-data/
 
 # Environments
 .env
+.env.local
+node_modules/
+.next/
 .envrc
 .venv
 env/

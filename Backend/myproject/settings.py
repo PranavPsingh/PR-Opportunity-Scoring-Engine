@@ -10,7 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -19,13 +22,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-x5u=j_nc7b@w-yjsjw0-0eul7l(7y91u(su!@5hlg+c*odulnv'
+DEBUG = os.getenv("DJANGO_DEBUG", "true").lower() in {"1", "true", "yes", "on"}
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# A development-only default keeps first-run commands simple. Production must
+# always supply a secret through the environment.
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "development-only-secret-key-change-me"
+    else:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false.")
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [host for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host]
 
 
 # Application definition
@@ -37,6 +45,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'apps.api',
+    'apps.users',
+    'apps.clients',
+    'apps.opportunities',
+    'apps.scoring',
+    'apps.angles',
+    'apps.evidence',
+    'apps.outcomes',
 ]
 
 MIDDLEWARE = [
@@ -73,9 +89,13 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": os.getenv("DATABASE_ENGINE", "django.db.backends.sqlite3"),
+        "NAME": os.getenv("DATABASE_NAME", str(BASE_DIR / "db.sqlite3")),
+        "USER": os.getenv("DATABASE_USER", ""),
+        "PASSWORD": os.getenv("DATABASE_PASSWORD", ""),
+        "HOST": os.getenv("DATABASE_HOST", ""),
+        "PORT": os.getenv("DATABASE_PORT", ""),
     }
 }
 
@@ -104,7 +124,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = os.getenv("DJANGO_TIME_ZONE", "UTC")
 
 USE_I18N = True
 
@@ -115,6 +135,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # Email
