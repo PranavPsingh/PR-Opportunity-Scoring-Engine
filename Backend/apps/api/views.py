@@ -4,11 +4,13 @@ from json import JSONDecodeError
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.http import HttpRequest, JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
+from apps.clients.models import Client
 from apps.users.models import User
 from services.api_responses import error
 from services.api_responses import success
@@ -41,6 +43,137 @@ def parse_json_body(request: HttpRequest) -> tuple[dict[str, object] | None, Jso
 def required_string(payload: dict[str, object], field: str) -> str | None:
     value = payload.get(field)
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+CLIENT_FIELDS = ("company_name", "industry", "location", "website", "description", "company_size")
+
+
+def serialize_client(client: Client) -> dict[str, object]:
+    return {
+        "id": client.pk,
+        "company_name": client.company_name,
+        "industry": client.industry,
+        "location": client.location,
+        "website": client.website,
+        "description": client.description,
+        "company_size": client.company_size,
+        "created_by": serialize_user(client.created_by) if client.created_by else None,
+        "authorized_consultant_ids": list(client.authorized_consultants.values_list("id", flat=True)),
+        "created_at": client.created_at.isoformat(),
+        "updated_at": client.updated_at.isoformat(),
+    }
+
+
+def accessible_clients(request: HttpRequest):
+    clients = Client.objects.select_related("created_by").prefetch_related("authorized_consultants")
+    if request.user.role == User.Role.ADMIN:
+        return clients
+    return clients.filter(created_by=request.user) | clients.filter(authorized_consultants=request.user)
+
+
+def client_from_payload(payload: dict[str, object], *, created_by: User, existing: Client | None = None) -> tuple[Client | None, list[int] | None, JsonResponse | None]:
+    field_errors: dict[str, list[str]] = {}
+    values: dict[str, str] = {}
+    for field in CLIENT_FIELDS:
+        value = required_string(payload, field)
+        if not value:
+            field_errors[field] = ["This field is required."]
+        else:
+            values[field] = value
+            if field == "website":
+                try:
+                    URLValidator()(value)
+                except ValidationError:
+                    field_errors[field] = ["Enter a valid URL."]
+
+    consultant_ids = payload.get("authorized_consultant_ids")
+    if consultant_ids is not None and (not isinstance(consultant_ids, list) or any(not isinstance(item, int) for item in consultant_ids)):
+        field_errors["authorized_consultant_ids"] = ["Provide a list of consultant IDs."]
+        consultant_ids = None
+    if field_errors:
+        return None, None, error("validation_error", "Please correct the highlighted fields.", details=field_errors)
+
+    client = existing or Client(created_by=created_by)
+    for field, value in values.items():
+        setattr(client, field, value)
+    try:
+        client.full_clean()
+    except ValidationError as exc:
+        return None, None, error("validation_error", "Please correct the highlighted fields.", details=exc.message_dict)
+    return client, consultant_ids, None
+
+
+def authorized_consultants(ids: list[int]) -> tuple[object | None, JsonResponse | None]:
+    consultants = User.objects.filter(pk__in=ids, role=User.Role.CONSULTANT)
+    if consultants.count() != len(set(ids)):
+        return None, error("validation_error", "Please correct the highlighted fields.", details={"authorized_consultant_ids": ["Each ID must identify a consultant."]})
+    return consultants, None
+
+
+@require_http_methods(["GET", "POST"])
+@api_login_required
+def clients(request: HttpRequest) -> JsonResponse:
+    if request.method == "GET":
+        queryset = accessible_clients(request).distinct()
+        for param, field in (("search", "company_name"), ("industry", "industry"), ("location", "location"), ("company_size", "company_size")):
+            value = request.GET.get(param, "").strip()
+            if value:
+                lookup = "company_name__icontains" if param == "search" else f"{field}__iexact"
+                queryset = queryset.filter(**{lookup: value})
+        return success({"clients": [serialize_client(client) for client in queryset]})
+
+    payload, response = parse_json_body(request)
+    if response:
+        return response
+    assert payload is not None
+    client, consultant_ids, response = client_from_payload(payload, created_by=request.user)
+    if response:
+        return response
+    assert client is not None
+    if consultant_ids is not None:
+        if request.user.role != User.Role.ADMIN:
+            return error("admin_required", "Administrator access is required to assign consultants.", status=403)
+        consultants, response = authorized_consultants(consultant_ids)
+        if response:
+            return response
+    client.save()
+    if consultant_ids is not None:
+        client.authorized_consultants.set(consultants)
+    return success({"client": serialize_client(client)}, status=201)
+
+
+@require_http_methods(["GET", "PUT", "DELETE"])
+@api_login_required
+def client_detail(request: HttpRequest, client_id: int) -> JsonResponse:
+    try:
+        client = accessible_clients(request).distinct().get(pk=client_id)
+    except Client.DoesNotExist:
+        return error("client_not_found", "Client not found.", status=404)
+
+    if request.method == "GET":
+        return success({"client": serialize_client(client)})
+    if request.method == "DELETE":
+        client.delete()
+        return success({"message": "Client deleted."})
+
+    payload, response = parse_json_body(request)
+    if response:
+        return response
+    assert payload is not None
+    updated_client, consultant_ids, response = client_from_payload(payload, created_by=request.user, existing=client)
+    if response:
+        return response
+    assert updated_client is not None
+    if consultant_ids is not None:
+        if request.user.role != User.Role.ADMIN:
+            return error("admin_required", "Administrator access is required to assign consultants.", status=403)
+        consultants, response = authorized_consultants(consultant_ids)
+        if response:
+            return response
+    updated_client.save()
+    if consultant_ids is not None:
+        updated_client.authorized_consultants.set(consultants)
+    return success({"client": serialize_client(updated_client)})
 
 
 def csrf_failure(request: HttpRequest, reason: str = "") -> JsonResponse:

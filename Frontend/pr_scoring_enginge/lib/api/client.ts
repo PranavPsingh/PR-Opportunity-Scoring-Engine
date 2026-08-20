@@ -47,6 +47,18 @@ export class ApiClient {
     });
   }
 
+  async put<T>(path: string, body?: unknown, init?: RequestInit): Promise<T> {
+    return this.request<T>(path, {
+      ...init,
+      method: "PUT",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  }
+
+  async delete<T>(path: string, init?: RequestInit): Promise<T> {
+    return this.request<T>(path, { ...init, method: "DELETE" });
+  }
+
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");

@@ -43,6 +43,32 @@ h1 { font-size: clamp(3rem, 6vw, 5.5rem); letter-spacing: -.04em; line-height: 1
 .primary-button { background: #172033; border: 0; border-radius: .45rem; color: #fff; cursor: pointer; font: inherit; font-weight: 700; margin-top: 1rem; padding: .8rem 1rem; }
 .primary-button:disabled { cursor: wait; opacity: .65; }
 .form-error { color: #b42318; margin: .5rem 0 0; }
+.page-heading { align-items: flex-end; display: flex; gap: 2rem; justify-content: space-between; }
+.page-heading h1, .client-form-page h1, .client-detail h1 { font-size: clamp(2.7rem, 5vw, 4.5rem); margin: .5rem 0; }
+.page-heading p:not(.eyebrow), .client-detail > .page-heading p { color: #526076; font-size: 1.15rem; margin: 0; }
+.client-filters { align-items: end; background: #fff; border: 1px solid #e0e4eb; border-radius: .85rem; display: grid; gap: 1rem; grid-template-columns: minmax(15rem, 2fr) repeat(2, minmax(10rem, 1fr)); margin: 2.5rem 0; padding: 1.25rem; }
+.client-filters label, .client-form label { color: #27354d; display: grid; font-size: .9rem; font-weight: 700; gap: .45rem; }
+.client-filters input, .client-filters select, .client-form input, .client-form textarea { background: #fff; border: 1px solid #b9c2d0; border-radius: .45rem; color: #172033; font: inherit; font-weight: 400; padding: .7rem; width: 100%; }
+.client-filters select { height: 2.7rem; }
+.client-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.client-card { background: #fff; border: 1px solid #e0e4eb; border-radius: .85rem; color: inherit; display: flex; flex-direction: column; min-height: 13rem; padding: 1.5rem; text-decoration: none; transition: border-color .15s, box-shadow .15s; }
+.client-card:hover { border-color: #71809a; box-shadow: 0 .5rem 1.5rem #17203313; }
+.client-card h2 { font-size: 1.4rem; margin: .8rem 0 .5rem; }
+.client-card p, .muted-copy { color: #526076; margin: 0; }
+.client-card > span:last-child { color: #526a94; font-weight: 700; margin-top: auto; padding-top: 1.75rem; }
+.client-card-industry { color: #526a94; font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.empty-state { background: #fff; border: 1px dashed #b9c2d0; border-radius: .85rem; padding: 3rem; text-align: center; }
+.empty-state h2 { margin-top: 0; }.empty-state p { color: #526076; }
+.client-form-page { max-width: 52rem; }.client-form-page .lead { font-size: 1.15rem; margin: 0 0 2rem; }
+.client-form { background: #fff; border: 1px solid #e0e4eb; border-radius: .85rem; display: grid; gap: 1.25rem; grid-template-columns: 1fr 1fr; padding: 2rem; }
+.form-wide, .form-actions { grid-column: 1 / -1; }.client-form textarea { resize: vertical; }
+.form-actions, .detail-actions { display: flex; gap: .75rem; justify-content: flex-end; }
+.secondary-button, .danger-button { border: 1px solid #71809a; border-radius: .45rem; cursor: pointer; font: inherit; font-weight: 700; padding: .8rem 1rem; text-decoration: none; }
+.secondary-button { background: #fff; color: #27354d; }.danger-button { background: #fff; border-color: #b42318; color: #b42318; }.danger-button:disabled { cursor: wait; opacity: .65; }
+.back-link { color: #526a94; display: inline-block; font-weight: 700; margin-bottom: 1.75rem; text-decoration: none; }
+.detail-grid { display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 2fr) minmax(17rem, 1fr); margin-top: 2.5rem; }
+.detail-grid article, .detail-grid aside { background: #fff; border: 1px solid #e0e4eb; border-radius: .85rem; padding: 2rem; }.detail-grid h2 { margin-top: 0; }.detail-grid article p { color: #39475d; line-height: 1.7; white-space: pre-wrap; }
+.detail-grid dl { margin: 0; }.detail-grid dl div { border-top: 1px solid #e0e4eb; padding: 1rem 0; }.detail-grid dt { color: #526076; font-size: .85rem; font-weight: 700; }.detail-grid dd { margin: .35rem 0 0; overflow-wrap: anywhere; }.detail-grid a { color: #526a94; }
 
 @media (max-width: 640px) {
   .app-navigation { align-items: flex-start; flex-direction: column; gap: .75rem; padding: 1.25rem 1.5rem; }
@@ -50,4 +76,5 @@ h1 { font-size: clamp(3rem, 6vw, 5.5rem); letter-spacing: -.04em; line-height: 1
   .nav-user { margin-left: 0; }
   .app-content { padding: 4rem 1.5rem; }
   .status-grid { grid-template-columns: 1fr; }
+  .page-heading { align-items: flex-start; flex-direction: column; }.client-filters, .client-form, .detail-grid { grid-template-columns: 1fr; }.client-filters { align-items: stretch; }.form-wide, .form-actions { grid-column: auto; }.form-actions, .detail-actions { justify-content: flex-start; flex-wrap: wrap; }
 }
