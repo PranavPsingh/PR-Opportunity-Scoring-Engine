@@ -97,8 +97,6 @@ See [`PR_Opportunity_Scoring_Engine_Project_Description.md`](./PR_Opportunity_Sc
  
 ## Getting Started
  
-> Setup instructions will be filled in once the initial scaffold is committed.
- 
 ```bash
 # Clone the repo
 git clone <repo-url>
@@ -109,10 +107,23 @@ cd backend
 # install dependencies, configure .env, run migrations
  
 # Frontend
-cd frontend
+cd Frontend/pr_scoring_enginge
 npm install
 npm run dev
 ```
+
+### Docker
+
+The Docker setup runs the Next.js frontend and Django backend. The Django
+project currently uses its configured SQLite database.
+
+```bash
+docker compose up --build
+```
+
+Open [http://localhost:3000](http://localhost:3000) for the frontend and
+[http://localhost:8000/admin/](http://localhost:8000/admin/) for Django. Stop
+the application with `docker compose down`.
  
 ### Environment Variables
  
