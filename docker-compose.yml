@@ -3,6 +3,8 @@ services:
     build:
       context: ./Frontend/pr_scoring_enginge
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
     ports:
       - "3000:3000"
     restart: unless-stopped
@@ -14,3 +16,8 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health/', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

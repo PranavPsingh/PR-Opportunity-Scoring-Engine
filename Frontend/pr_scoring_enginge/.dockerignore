@@ -1,6 +1,5 @@
+.env
+.env.local
 node_modules
 .next
-.git
-.env*
 npm-debug.log*
-Dockerfile
