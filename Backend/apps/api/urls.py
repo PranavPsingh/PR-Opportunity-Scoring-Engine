@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import change_user_role, csrf, current_user, delete_user, health_check, login_view, logout_view, protected_example, register, users_list
+from .views import change_user_role, client_detail, clients, csrf, current_user, delete_user, health_check, login_view, logout_view, protected_example, register, users_list
 
 app_name = "api"
 
@@ -15,4 +15,6 @@ urlpatterns = [
     path("auth/users/", users_list, name="users-list"),
     path("auth/users/<int:user_id>/role/", change_user_role, name="change-user-role"),
     path("auth/users/<int:user_id>/delete/", delete_user, name="delete-user"),
+    path("clients/", clients, name="clients"),
+    path("clients/<int:client_id>/", client_detail, name="client-detail"),
 ]

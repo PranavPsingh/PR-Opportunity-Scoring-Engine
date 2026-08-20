@@ -3,7 +3,7 @@ import Link from "next/link";
 import { AuthenticatedUser } from "@/lib/auth";
 import { useAuth } from "@/components/auth-provider";
 
-const futureSections = ["Clients", "Opportunities", "Analysis Results"];
+const futureSections = ["Opportunities", "Analysis Results"];
 
 export function Navigation({ user }: { user: AuthenticatedUser }) {
   const { logout } = useAuth();
@@ -17,6 +17,7 @@ export function Navigation({ user }: { user: AuthenticatedUser }) {
       <Link className="nav-brand" href="/">Pathos</Link>
       <div className="nav-links">
         <Link aria-current="page" href="/">Dashboard</Link>
+        <Link href="/clients">Clients</Link>
         {futureSections.map((section) => (
           <span aria-disabled="true" key={section}>{section}</span>
         ))}

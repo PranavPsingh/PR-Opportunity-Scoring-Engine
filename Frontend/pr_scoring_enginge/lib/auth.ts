@@ -12,7 +12,7 @@ export type ManagedUser = AuthenticatedUser;
 type UserResponse = ApiEnvelope<{ user: AuthenticatedUser }>;
 type CsrfResponse = ApiEnvelope<{ csrfToken: string }>;
 
-async function csrfHeaders(): Promise<HeadersInit> {
+export async function csrfHeaders(): Promise<HeadersInit> {
   const response = await apiClient.get<CsrfResponse>("auth/csrf/");
   return { "X-CSRFToken": response.data.csrfToken };
 }
