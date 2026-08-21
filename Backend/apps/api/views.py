@@ -5,12 +5,15 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
+from django.db import transaction
 from django.http import HttpRequest, JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from apps.clients.models import Client
+from apps.angles.models import AngleGeneration, PRAngle
+from apps.angles.services import AngleGenerationError, build_angle_context, get_angle_provider, validate_angles
 from apps.extraction.models import ExtractionConfirmation, OpportunityExtraction
 from apps.extraction.services import ExtractionError, FIELD_NAMES, apply_confirmed_values, get_provider, validate_extraction
 from apps.opportunities.models import Opportunity
@@ -118,6 +121,19 @@ def serialize_score(score: OpportunityScore) -> dict[str, object]:
         "credibility_score": score.credibility_score, "audience_interest_score": score.audience_interest_score,
         "scoring_version": score.scoring_version, "scored_at": score.scored_at.isoformat(),
         "scored_by": serialize_user(score.scored_by) if score.scored_by else None, "metadata": score.metadata,
+    }
+
+
+def serialize_angle(angle: PRAngle) -> dict[str, object]:
+    return {
+        "id": angle.pk, "opportunity_id": angle.generation.opportunity_id,
+        "generation_id": angle.generation_id, "title": angle.title, "summary": angle.summary,
+        "potential_score": angle.potential_score, "potential_level": angle.potential_level,
+        "rationale": angle.rationale, "target_audience": angle.target_audience,
+        "media_categories": angle.media_categories, "key_message": angle.key_message,
+        "supporting_facts": angle.supporting_facts, "required_evidence": angle.required_evidence,
+        "risks": angle.risks, "missing_information": angle.missing_information,
+        "selected": angle.selected, "generated_at": angle.generation.created_at.isoformat(),
     }
 
 
@@ -566,3 +582,70 @@ def delete_user(request: HttpRequest, user_id: int) -> JsonResponse:
 
     user.delete()
     return success({"message": "User deleted."})
+
+
+@require_POST
+@api_login_required
+def generate_opportunity_angles(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    confirmation = ExtractionConfirmation.objects.filter(extraction__opportunity=opportunity).select_related("extraction").order_by("-confirmed_at", "-id").first()
+    score = OpportunityScore.objects.filter(opportunity=opportunity).first()
+    try:
+        extraction_response, extraction_model = get_provider().extract(opportunity.client_briefing)
+        extracted_fields = validate_extraction(extraction_response, opportunity.client_briefing)
+        OpportunityExtraction.objects.create(opportunity=opportunity, provider="gemini", model_identifier=extraction_model, extracted_data=extracted_fields)
+        context, facts = build_angle_context(opportunity, score, confirmation, extracted_fields)
+        response, model_identifier = get_angle_provider().generate(context)
+        angles = validate_angles(response, facts)
+    except (ExtractionError, AngleGenerationError) as exc:
+        status = 504 if exc.code == "ai_provider_timeout" else 502
+        return error(exc.code, exc.message, status=status)
+    with transaction.atomic():
+        generation = AngleGeneration.objects.create(opportunity=opportunity, score=score, provider="gemini", model_identifier=model_identifier, input_facts=facts, created_by=request.user)
+        records = [PRAngle(generation=generation, **angle) for angle in angles]
+        PRAngle.objects.bulk_create(records)
+    created = PRAngle.objects.filter(generation=generation).select_related("generation")
+    return success({"generation_id": generation.pk, "angles": [serialize_angle(angle) for angle in created]}, status=201)
+
+
+@require_GET
+@api_login_required
+def opportunity_angles(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    latest_only = request.GET.get("latest", "true").lower() != "false"
+    generations = AngleGeneration.objects.filter(opportunity=opportunity)
+    if latest_only:
+        latest = generations.first()
+        angles = PRAngle.objects.filter(generation=latest).select_related("generation") if latest else PRAngle.objects.none()
+    else:
+        angles = PRAngle.objects.filter(generation__in=generations).select_related("generation")
+    return success({"angles": [serialize_angle(angle) for angle in angles]})
+
+
+@require_http_methods(["PATCH", "DELETE"])
+@api_login_required
+def opportunity_angle_detail(request: HttpRequest, opportunity_id: int, angle_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    try:
+        angle = PRAngle.objects.get(pk=angle_id, generation__opportunity=opportunity)
+    except PRAngle.DoesNotExist:
+        return error("angle_not_found", "PR angle not found.", status=404)
+    if request.method == "PATCH":
+        payload, response = parse_json_body(request)
+        if response:
+            return response
+        assert payload is not None
+        selected = payload.get("selected")
+        if not isinstance(selected, bool) or set(payload) != {"selected"}:
+            return error("validation_error", "Provide only a boolean selected value.", details={"selected": ["Provide true or false."]})
+        angle.selected = selected
+        angle.save(update_fields=["selected"])
+        return success({"angle": serialize_angle(angle)})
+    angle.delete()
+    return success({"message": "PR angle deleted."})
