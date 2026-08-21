@@ -48,7 +48,7 @@ h1 { font-size: clamp(3rem, 6vw, 5.5rem); letter-spacing: -.04em; line-height: 1
 .page-heading p:not(.eyebrow), .client-detail > .page-heading p { color: #526076; font-size: 1.15rem; margin: 0; }
 .client-filters { align-items: end; background: #fff; border: 1px solid #e0e4eb; border-radius: .85rem; display: grid; gap: 1rem; grid-template-columns: minmax(15rem, 2fr) repeat(2, minmax(10rem, 1fr)); margin: 2.5rem 0; padding: 1.25rem; }
 .client-filters label, .client-form label { color: #27354d; display: grid; font-size: .9rem; font-weight: 700; gap: .45rem; }
-.client-filters input, .client-filters select, .client-form input, .client-form textarea { background: #fff; border: 1px solid #b9c2d0; border-radius: .45rem; color: #172033; font: inherit; font-weight: 400; padding: .7rem; width: 100%; }
+.client-filters input, .client-filters select, .client-form input, .client-form textarea, .client-form select { background: #fff; border: 1px solid #b9c2d0; border-radius: .45rem; color: #172033; font: inherit; font-weight: 400; padding: .7rem; width: 100%; }
 .client-filters select { height: 2.7rem; }
 .client-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
 .client-card { background: #fff; border: 1px solid #e0e4eb; border-radius: .85rem; color: inherit; display: flex; flex-direction: column; min-height: 13rem; padding: 1.5rem; text-decoration: none; transition: border-color .15s, box-shadow .15s; }
@@ -59,7 +59,7 @@ h1 { font-size: clamp(3rem, 6vw, 5.5rem); letter-spacing: -.04em; line-height: 1
 .client-card-industry { color: #526a94; font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .empty-state { background: #fff; border: 1px dashed #b9c2d0; border-radius: .85rem; padding: 3rem; text-align: center; }
 .empty-state h2 { margin-top: 0; }.empty-state p { color: #526076; }
-.client-form-page { max-width: 52rem; }.client-form-page .lead { font-size: 1.15rem; margin: 0 0 2rem; }
+.client-form-page, .opportunity-form-page { max-width: 52rem; }.client-form-page .lead, .opportunity-form-page .lead { font-size: 1.15rem; margin: 0 0 2rem; }
 .client-form { background: #fff; border: 1px solid #e0e4eb; border-radius: .85rem; display: grid; gap: 1.25rem; grid-template-columns: 1fr 1fr; padding: 2rem; }
 .form-wide, .form-actions { grid-column: 1 / -1; }.client-form textarea { resize: vertical; }
 .form-actions, .detail-actions { display: flex; gap: .75rem; justify-content: flex-end; }
