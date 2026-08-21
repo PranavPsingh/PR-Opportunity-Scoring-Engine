@@ -14,6 +14,8 @@ from apps.clients.models import Client
 from apps.extraction.models import ExtractionConfirmation, OpportunityExtraction
 from apps.extraction.services import ExtractionError, FIELD_NAMES, apply_confirmed_values, get_provider, validate_extraction
 from apps.opportunities.models import Opportunity
+from apps.scoring.models import OpportunityScore
+from apps.scoring.services import ScoringService
 from apps.users.models import User
 from services.api_responses import error
 from services.api_responses import success
@@ -105,6 +107,17 @@ def serialize_extraction(extraction: OpportunityExtraction) -> dict[str, object]
             "confirmed_by": serialize_user(confirmation.confirmed_by) if confirmation.confirmed_by else None,
             "decisions": confirmation.decisions, "confirmed_at": confirmation.confirmed_at.isoformat(),
         },
+    }
+
+
+def serialize_score(score: OpportunityScore) -> dict[str, object]:
+    return {
+        "id": score.pk, "opportunity_id": score.opportunity_id, "overall_score": score.overall_score,
+        "potential": score.potential, "newsworthiness_score": score.newsworthiness_score,
+        "media_appeal_score": score.media_appeal_score, "timeliness_score": score.timeliness_score,
+        "credibility_score": score.credibility_score, "audience_interest_score": score.audience_interest_score,
+        "scoring_version": score.scoring_version, "scored_at": score.scored_at.isoformat(),
+        "scored_by": serialize_user(score.scored_by) if score.scored_by else None, "metadata": score.metadata,
     }
 
 
@@ -256,6 +269,37 @@ def confirm_opportunity_extraction(request: HttpRequest, opportunity_id: int) ->
     confirmation = ExtractionConfirmation.objects.create(extraction=extraction, confirmed_by=request.user, decisions=stored_decisions)
     extraction = OpportunityExtraction.objects.select_related("confirmation__confirmed_by").get(pk=extraction.pk)
     return success({"extraction": serialize_extraction(extraction), "opportunity": serialize_opportunity(Opportunity.objects.select_related("client", "created_by").get(pk=opportunity.pk))})
+
+
+@require_http_methods(["GET", "POST"])
+@api_login_required
+def opportunity_score(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    """Read the latest score or persist a new immutable score version."""
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    if request.method == "GET":
+        latest = OpportunityScore.objects.filter(opportunity=opportunity).select_related("scored_by").first()
+        return success({"score": serialize_score(latest) if latest else None})
+    result = ScoringService(opportunity).score()
+    dimensions = result["dimensions"]
+    score = OpportunityScore.objects.create(
+        opportunity=opportunity, scored_by=request.user, overall_score=result["overall_score"], potential=result["potential"],
+        newsworthiness_score=dimensions["newsworthiness"]["score"], media_appeal_score=dimensions["media_appeal"]["score"],
+        timeliness_score=dimensions["timeliness"]["score"], credibility_score=dimensions["credibility"]["score"],
+        audience_interest_score=dimensions["audience_interest"]["score"], scoring_version=result["scoring_version"], metadata=result,
+    )
+    return success({"score": serialize_score(score)}, status=201)
+
+
+@require_GET
+@api_login_required
+def opportunity_score_history(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    scores = OpportunityScore.objects.filter(opportunity=opportunity).select_related("scored_by")
+    return success({"scores": [serialize_score(score) for score in scores]})
 
 
 def client_from_payload(payload: dict[str, object], *, created_by: User, existing: Client | None = None) -> tuple[Client | None, list[int] | None, JsonResponse | None]:
