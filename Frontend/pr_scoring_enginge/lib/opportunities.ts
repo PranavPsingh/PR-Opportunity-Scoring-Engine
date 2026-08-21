@@ -16,6 +16,9 @@ export type ExtractionStatus = "extracted" | "not_found" | "ambiguous";
 export type ExtractedField = { value: string | number | boolean | string[] | null; confidence: number; source_text: string; extraction_status: ExtractionStatus };
 export type ExtractionDecision = { action: "accepted" | "edited" | "rejected"; value: ExtractedField["value"] };
 export type ExtractionRecord = { id: number; opportunity_id: number; provider: string; model_identifier: string; status: string; fields: Record<string, ExtractedField>; created_at: string; confirmation: { confirmed_by: { id: number; name: string; email: string; role: string } | null; decisions: Record<string, ExtractionDecision>; confirmed_at: string } | null };
+export type ScoreFactor = { factor: string; impact: number };
+export type ScoreDimension = { dimension: string; score: number; positive_factors: ScoreFactor[]; negative_factors: ScoreFactor[]; missing_information: string[]; scoring_signals_used: ScoreFactor[] };
+export type OpportunityScore = { id: number; opportunity_id: number; overall_score: number; potential: "HIGH" | "MEDIUM" | "LOW"; newsworthiness_score: number; media_appeal_score: number; timeliness_score: number; credibility_score: number; audience_interest_score: number; scoring_version: string; scored_at: string; metadata: { dimensions: Record<string, ScoreDimension>; weights: Record<string, string> } };
 
 export async function getOpportunities(clientId?: number): Promise<OpportunityRecord[]> {
   const suffix = clientId ? `?client_id=${clientId}` : "";
@@ -29,3 +32,6 @@ export async function deleteOpportunity(id: number): Promise<void> { await apiCl
 export async function getLatestExtraction(id: number): Promise<ExtractionRecord | null> { const response = await apiClient.get<ApiEnvelope<{ extraction: ExtractionRecord | null }>>(`opportunities/${id}/extraction/`); return response.data.extraction; }
 export async function extractInformation(id: number): Promise<ExtractionRecord> { const response = await apiClient.post<ApiEnvelope<{ extraction: ExtractionRecord }>>(`opportunities/${id}/extract/`, undefined, { headers: await csrfHeaders() }); return response.data.extraction; }
 export async function confirmExtraction(id: number, extractionId: number, decisions: Record<string, ExtractionDecision>): Promise<{ extraction: ExtractionRecord; opportunity: OpportunityRecord }> { const response = await apiClient.post<ApiEnvelope<{ extraction: ExtractionRecord; opportunity: OpportunityRecord }>>(`opportunities/${id}/extraction/confirm/`, { extraction_id: extractionId, decisions }, { headers: await csrfHeaders() }); return response.data; }
+export async function getLatestScore(id: number): Promise<OpportunityScore | null> { const response = await apiClient.get<ApiEnvelope<{ score: OpportunityScore | null }>>(`opportunities/${id}/score/`); return response.data.score; }
+export async function scoreOpportunity(id: number): Promise<OpportunityScore> { const response = await apiClient.post<ApiEnvelope<{ score: OpportunityScore }>>(`opportunities/${id}/score/`, undefined, { headers: await csrfHeaders() }); return response.data.score; }
+export async function getScoreHistory(id: number): Promise<OpportunityScore[]> { const response = await apiClient.get<ApiEnvelope<{ scores: OpportunityScore[] }>>(`opportunities/${id}/scores/`); return response.data.scores; }
