@@ -24,11 +24,20 @@ export type PRAngle = { id: number; opportunity_id: number; generation_id: numbe
 export type StrengtheningStatus = "OPEN" | "IN_PROGRESS" | "COMPLETED" | "DISMISSED";
 export type StrengtheningRecommendation = { id: number; analysis_id: number; opportunity_id: number; angle_id: number | null; angle_title: string | null; title: string; weakness: string; affected_dimension: string; severity: "HIGH" | "MEDIUM" | "LOW"; explanation: string; recommendation: string; required_information: string[]; required_evidence: string[]; expected_benefit: string; status: StrengtheningStatus; source_factors: string[]; created_at: string; updated_at: string };
 export type StrengtheningAnalysis = { id: number; opportunity_id: number; score_id: number | null; created_at: string; recommendations: StrengtheningRecommendation[]; progress: { completed: number; total: number } };
+export type DashboardOpportunity = { id: number; title: string; client_name: string; status: OpportunityStatus; score: number | null; potential: "HIGH" | "MEDIUM" | "LOW" | null; last_analyzed: string | null; attention_reasons: string[] };
+export type DashboardTrend = { date: string; analyzed_count: number; average_score: number; high_count: number };
+export type DashboardSummary = { total_opportunities: number; potential_counts: Record<"HIGH" | "MEDIUM" | "LOW", number>; average_score: number | null; requiring_attention: number; score_buckets: Record<string, number>; recent_opportunities: DashboardOpportunity[]; top_opportunities: DashboardOpportunity[]; attention_opportunities: DashboardOpportunity[]; trends: DashboardTrend[] };
 
-export async function getOpportunities(clientId?: number): Promise<OpportunityRecord[]> {
-  const suffix = clientId ? `?client_id=${clientId}` : "";
+export async function getOpportunities(clientId?: number, filters: Record<string, string> = {}): Promise<OpportunityRecord[]> {
+  const query = new URLSearchParams(clientId ? { client_id: String(clientId), ...filters } : filters);
+  const suffix = query.size ? `?${query}` : "";
   const response = await apiClient.get<ApiEnvelope<{ opportunities: OpportunityRecord[] }>>(`opportunities/${suffix}`);
   return response.data.opportunities;
+}
+export async function getDashboardSummary(filters: Record<string, string> = {}): Promise<DashboardSummary> {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+  const response = await apiClient.get<ApiEnvelope<{ summary: DashboardSummary }>>(`dashboard/summary/${query.size ? `?${query}` : ""}`);
+  return response.data.summary;
 }
 export async function getOpportunity(id: number): Promise<OpportunityRecord> { const response = await apiClient.get<ApiEnvelope<{ opportunity: OpportunityRecord }>>(`opportunities/${id}/`); return response.data.opportunity; }
 export async function createOpportunity(input: OpportunityInput): Promise<OpportunityRecord> { const response = await apiClient.post<ApiEnvelope<{ opportunity: OpportunityRecord }>>("opportunities/", input, { headers: await csrfHeaders() }); return response.data.opportunity; }

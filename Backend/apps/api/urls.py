@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import analyze_opportunity_strengthening, change_user_role, client_detail, clients, confirm_opportunity_extraction, csrf, current_user, delete_user, extract_opportunity_information, generate_opportunity_angles, health_check, latest_opportunity_extraction, login_view, logout_view, opportunity_angle_detail, opportunity_angles, opportunity_detail, opportunity_score, opportunity_score_explanation, opportunity_score_history, opportunities, opportunity_strengthening, opportunity_strengthening_detail, protected_example, register, users_list
+from .views import analyze_opportunity_strengthening, change_user_role, client_detail, clients, confirm_opportunity_extraction, csrf, current_user, dashboard_summary, delete_user, extract_opportunity_information, generate_opportunity_angles, health_check, latest_opportunity_extraction, login_view, logout_view, opportunity_angle_detail, opportunity_angles, opportunity_detail, opportunity_score, opportunity_score_explanation, opportunity_score_history, opportunities, opportunity_strengthening, opportunity_strengthening_detail, protected_example, register, users_list
 
 app_name = "api"
 
@@ -17,6 +17,7 @@ urlpatterns = [
     path("auth/users/<int:user_id>/delete/", delete_user, name="delete-user"),
     path("clients/", clients, name="clients"),
     path("clients/<int:client_id>/", client_detail, name="client-detail"),
+    path("dashboard/summary/", dashboard_summary, name="dashboard-summary"),
     path("opportunities/", opportunities, name="opportunities"),
     path("opportunities/<int:opportunity_id>/", opportunity_detail, name="opportunity-detail"),
     path("opportunities/<int:opportunity_id>/extract/", extract_opportunity_information, name="opportunity-extract"),

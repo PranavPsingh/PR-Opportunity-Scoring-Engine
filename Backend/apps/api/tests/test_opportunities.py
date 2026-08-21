@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from apps.clients.models import Client
 from apps.opportunities.models import Opportunity
+from apps.scoring.models import OpportunityScore
 from apps.users.models import User
 
 
@@ -55,3 +56,32 @@ class OpportunitiesApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("title", response.json()["error"]["details"])
         self.assertIn("client_briefing", response.json()["error"]["details"])
+
+    def test_dashboard_summary_aggregates_latest_scores_filters_and_sorts(self) -> None:
+        high = Opportunity.objects.create(client=self.client_record, title="High story", client_briefing="Brief", created_by=self.consultant, status=Opportunity.Status.ANALYZED)
+        low = Opportunity.objects.create(client=self.client_record, title="Draft story", client_briefing="Brief", created_by=self.consultant, status=Opportunity.Status.DRAFT)
+        OpportunityScore.objects.create(opportunity=high, overall_score=88, potential="HIGH", newsworthiness_score=88, media_appeal_score=88, timeliness_score=88, credibility_score=88, audience_interest_score=88, scored_by=self.consultant)
+        OpportunityScore.objects.create(opportunity=low, overall_score=22, potential="LOW", newsworthiness_score=22, media_appeal_score=22, timeliness_score=22, credibility_score=22, audience_interest_score=22, scored_by=self.consultant)
+        self.client.force_login(self.consultant)
+
+        response = self.client.get(reverse("api:dashboard-summary"))
+
+        self.assertEqual(response.status_code, 200)
+        summary = response.json()["data"]["summary"]
+        self.assertEqual(summary["total_opportunities"], 2)
+        self.assertEqual(summary["potential_counts"], {"HIGH": 1, "MEDIUM": 0, "LOW": 1})
+        self.assertEqual(summary["average_score"], 55.0)
+        self.assertEqual(summary["requiring_attention"], 1)
+        self.assertEqual(summary["top_opportunities"][0]["title"], "High story")
+        self.assertEqual(len(summary["trends"]), 1)
+        filtered = self.client.get(f"{reverse('api:dashboard-summary')}?potential=HIGH").json()["data"]["summary"]
+        self.assertEqual(filtered["total_opportunities"], 1)
+        self.assertEqual(filtered["top_opportunities"][0]["title"], "High story")
+
+    def test_dashboard_summary_requires_authentication_and_supports_empty_history(self) -> None:
+        self.assertEqual(self.client.get(reverse("api:dashboard-summary")).status_code, 401)
+        self.client.force_login(self.consultant)
+        summary = self.client.get(reverse("api:dashboard-summary")).json()["data"]["summary"]
+        self.assertEqual(summary["total_opportunities"], 0)
+        self.assertIsNone(summary["average_score"])
+        self.assertEqual(summary["trends"], [])
