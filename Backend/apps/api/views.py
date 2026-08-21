@@ -19,6 +19,8 @@ from apps.extraction.services import ExtractionError, FIELD_NAMES, apply_confirm
 from apps.opportunities.models import Opportunity
 from apps.scoring.models import OpportunityScore
 from apps.scoring.services import ScoringService
+from apps.strengthening.models import StoryStrengtheningAnalysis, StoryStrengtheningRecommendation
+from apps.strengthening.services import analyze_story
 from apps.users.models import User
 from services.api_responses import error
 from services.api_responses import success
@@ -134,6 +136,30 @@ def serialize_angle(angle: PRAngle) -> dict[str, object]:
         "supporting_facts": angle.supporting_facts, "required_evidence": angle.required_evidence,
         "risks": angle.risks, "missing_information": angle.missing_information,
         "selected": angle.selected, "generated_at": angle.generation.created_at.isoformat(),
+    }
+
+
+def serialize_strengthening_recommendation(recommendation: StoryStrengtheningRecommendation) -> dict[str, object]:
+    return {
+        "id": recommendation.pk, "analysis_id": recommendation.analysis_id, "opportunity_id": recommendation.opportunity_id,
+        "angle_id": recommendation.angle_id, "angle_title": recommendation.angle.title if recommendation.angle else None,
+        "title": recommendation.title, "weakness": recommendation.weakness, "affected_dimension": recommendation.affected_dimension,
+        "severity": recommendation.severity, "explanation": recommendation.explanation, "recommendation": recommendation.recommendation,
+        "required_information": recommendation.required_information, "required_evidence": recommendation.required_evidence,
+        "expected_benefit": recommendation.expected_benefit, "status": recommendation.status,
+        "source_factors": recommendation.source_factors, "created_at": recommendation.created_at.isoformat(),
+        "updated_at": recommendation.updated_at.isoformat(),
+    }
+
+
+def serialize_strengthening_analysis(analysis: StoryStrengtheningAnalysis) -> dict[str, object]:
+    recommendations = analysis.recommendations.select_related("angle").all()
+    completed = recommendations.filter(status=StoryStrengtheningRecommendation.Status.COMPLETED).count()
+    total = recommendations.count()
+    return {
+        "id": analysis.pk, "opportunity_id": analysis.opportunity_id, "score_id": analysis.score_id,
+        "created_at": analysis.created_at.isoformat(), "recommendations": [serialize_strengthening_recommendation(item) for item in recommendations],
+        "progress": {"completed": completed, "total": total},
     }
 
 
@@ -649,3 +675,49 @@ def opportunity_angle_detail(request: HttpRequest, opportunity_id: int, angle_id
         return success({"angle": serialize_angle(angle)})
     angle.delete()
     return success({"message": "PR angle deleted."})
+
+
+@require_POST
+@api_login_required
+def analyze_opportunity_strengthening(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    score = OpportunityScore.objects.filter(opportunity=opportunity).first()
+    if score is None:
+        return error("score_not_found", "Score this opportunity before analyzing story strength.", status=404)
+    latest_generation = AngleGeneration.objects.filter(opportunity=opportunity).first()
+    angles = list(PRAngle.objects.filter(generation=latest_generation)) if latest_generation else []
+    analysis = analyze_story(opportunity, score=score, angles=angles)
+    return success({"analysis": serialize_strengthening_analysis(analysis)}, status=201)
+
+
+@require_GET
+@api_login_required
+def opportunity_strengthening(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    analysis = StoryStrengtheningAnalysis.objects.filter(opportunity=opportunity).first()
+    return success({"analysis": serialize_strengthening_analysis(analysis) if analysis else None})
+
+
+@require_http_methods(["PATCH"])
+@api_login_required
+def opportunity_strengthening_detail(request: HttpRequest, opportunity_id: int, recommendation_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    try:
+        recommendation = StoryStrengtheningRecommendation.objects.select_related("angle").get(pk=recommendation_id, opportunity=opportunity)
+    except StoryStrengtheningRecommendation.DoesNotExist:
+        return error("recommendation_not_found", "Strengthening recommendation not found.", status=404)
+    payload, response = parse_json_body(request)
+    if response:
+        return response
+    assert payload is not None
+    if set(payload) != {"status"} or payload.get("status") not in StoryStrengtheningRecommendation.Status.values:
+        return error("validation_error", "Provide one valid recommendation status.", details={"status": ["Choose OPEN, IN_PROGRESS, COMPLETED, or DISMISSED."]})
+    recommendation.status = payload["status"]
+    recommendation.save(update_fields=["status", "updated_at"])
+    return success({"recommendation": serialize_strengthening_recommendation(recommendation)})
