@@ -1,6 +1,6 @@
 from django.urls import path
 
-from .views import change_user_role, client_detail, clients, confirm_opportunity_extraction, csrf, current_user, delete_user, extract_opportunity_information, health_check, latest_opportunity_extraction, login_view, logout_view, opportunity_detail, opportunity_score, opportunity_score_history, opportunities, protected_example, register, users_list
+from .views import change_user_role, client_detail, clients, confirm_opportunity_extraction, csrf, current_user, delete_user, extract_opportunity_information, health_check, latest_opportunity_extraction, login_view, logout_view, opportunity_detail, opportunity_score, opportunity_score_explanation, opportunity_score_history, opportunities, protected_example, register, users_list
 
 app_name = "api"
 
@@ -23,5 +23,6 @@ urlpatterns = [
     path("opportunities/<int:opportunity_id>/extraction/", latest_opportunity_extraction, name="opportunity-extraction"),
     path("opportunities/<int:opportunity_id>/extraction/confirm/", confirm_opportunity_extraction, name="opportunity-extraction-confirm"),
     path("opportunities/<int:opportunity_id>/score/", opportunity_score, name="opportunity-score"),
+    path("opportunities/<int:opportunity_id>/score/explanation/", opportunity_score_explanation, name="opportunity-score-explanation"),
     path("opportunities/<int:opportunity_id>/scores/", opportunity_score_history, name="opportunity-score-history"),
 ]
