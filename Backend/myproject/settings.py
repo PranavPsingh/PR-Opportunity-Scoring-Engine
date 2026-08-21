@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     'apps.evidence',
     'apps.outcomes',
     'apps.extraction',
+    'apps.strengthening',
 ]
 
 # Gemini configuration is backend-only. Never use a NEXT_PUBLIC_ prefix for

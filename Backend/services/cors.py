@@ -25,7 +25,7 @@ class CorsMiddleware:
         if origin in self.allowed_origins:
             response["Access-Control-Allow-Origin"] = origin
             response["Access-Control-Allow-Credentials"] = "true"
-            response["Access-Control-Allow-Headers"] = "Content-Type, X-CSRFToken"
-            response["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response["Access-Control-Allow-Headers"] = "Content-Type, X-CSRFToken, Authorization"
+            response["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
             patch_vary_headers(response, ("Origin",))
         return response
