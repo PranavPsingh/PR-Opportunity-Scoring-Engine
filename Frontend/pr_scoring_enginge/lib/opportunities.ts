@@ -16,9 +16,10 @@ export type ExtractionStatus = "extracted" | "not_found" | "ambiguous";
 export type ExtractedField = { value: string | number | boolean | string[] | null; confidence: number; source_text: string; extraction_status: ExtractionStatus };
 export type ExtractionDecision = { action: "accepted" | "edited" | "rejected"; value: ExtractedField["value"] };
 export type ExtractionRecord = { id: number; opportunity_id: number; provider: string; model_identifier: string; status: string; fields: Record<string, ExtractedField>; created_at: string; confirmation: { confirmed_by: { id: number; name: string; email: string; role: string } | null; decisions: Record<string, ExtractionDecision>; confirmed_at: string } | null };
-export type ScoreFactor = { factor: string; impact: number };
+export type ScoreFactor = { factor: string; impact: number; source_field: string; source_value: string | number | boolean | null; reason: string };
 export type ScoreDimension = { dimension: string; score: number; positive_factors: ScoreFactor[]; negative_factors: ScoreFactor[]; missing_information: string[]; scoring_signals_used: ScoreFactor[] };
-export type OpportunityScore = { id: number; opportunity_id: number; overall_score: number; potential: "HIGH" | "MEDIUM" | "LOW"; newsworthiness_score: number; media_appeal_score: number; timeliness_score: number; credibility_score: number; audience_interest_score: number; scoring_version: string; scored_at: string; metadata: { dimensions: Record<string, ScoreDimension>; weights: Record<string, string> } };
+export type ScoreCalculation = { formula: string; weighted_total: string; rounded_overall_score: number; dimensions: { dimension: string; score: number; weight: string; weighted_score: string }[] };
+export type OpportunityScore = { id: number; opportunity_id: number; overall_score: number; potential: "HIGH" | "MEDIUM" | "LOW"; newsworthiness_score: number; media_appeal_score: number; timeliness_score: number; credibility_score: number; audience_interest_score: number; scoring_version: string; scored_at: string; metadata: { dimensions: Record<string, ScoreDimension>; weights: Record<string, string>; calculation: ScoreCalculation; overall_explanation: { strong_points: ScoreFactor[]; areas_holding_back: ScoreFactor[] } } };
 
 export async function getOpportunities(clientId?: number): Promise<OpportunityRecord[]> {
   const suffix = clientId ? `?client_id=${clientId}` : "";

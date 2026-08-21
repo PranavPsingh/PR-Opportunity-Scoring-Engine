@@ -302,6 +302,29 @@ def opportunity_score_history(request: HttpRequest, opportunity_id: int) -> Json
     return success({"scores": [serialize_score(score) for score in scores]})
 
 
+@require_GET
+@api_login_required
+def opportunity_score_explanation(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    """Return the persisted explanation for the latest immutable score version."""
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    scores = OpportunityScore.objects.filter(opportunity=opportunity).select_related("scored_by")
+    score_id = request.GET.get("score_id")
+    if score_id and not score_id.isdigit():
+        return error("validation_error", "score_id must be a whole number.", details={"score_id": ["Provide a valid score ID."]})
+    score = scores.filter(pk=int(score_id)).first() if score_id else scores.first()
+    if score is None:
+        return error("score_not_found", "Score this opportunity before viewing its explanation.", status=404)
+    metadata = score.metadata
+    return success({
+        "score_id": score.pk, "opportunity_id": score.opportunity_id, "overall_score": score.overall_score,
+        "potential": score.potential, "scoring_version": score.scoring_version, "generated_at": score.scored_at.isoformat(),
+        "dimensions": metadata.get("dimensions", {}), "weights": metadata.get("weights", {}),
+        "calculation": metadata.get("calculation", {}), "overall_explanation": metadata.get("overall_explanation", {}),
+    })
+
+
 def client_from_payload(payload: dict[str, object], *, created_by: User, existing: Client | None = None) -> tuple[Client | None, list[int] | None, JsonResponse | None]:
     field_errors: dict[str, list[str]] = {}
     values: dict[str, str] = {}

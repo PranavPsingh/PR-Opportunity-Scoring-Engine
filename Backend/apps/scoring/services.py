@@ -21,6 +21,21 @@ CUSTOMER_TRACTION_THRESHOLD = 100
 RECENT_DAYS_THRESHOLD = 30
 UPCOMING_DAYS_THRESHOLD = 90
 
+MISSING_INFORMATION_LABELS = {
+    "funding_amount": "No funding amount provided",
+    "product_launch_status": "No product launch status provided",
+    "customer_traction": "No customer count provided",
+    "spokesperson_availability": "No named spokesperson availability provided",
+    "quantified_media_hook": "No quantified media hook provided",
+    "announcement_or_launch_date": "No specific launch or announcement date provided",
+    "official_documentation": "No official documentation referenced",
+    "investor_confirmation": "No investor confirmation provided",
+    "independent_customer_evidence": "No independent customer evidence provided",
+    "third_party_validation": "No third-party validation provided",
+    "measurable_results": "No measurable results provided",
+    "target_audience": "No target audience provided",
+}
+
 
 @dataclass
 class Dimension:
@@ -42,10 +57,75 @@ class ScoringService:
     def __init__(self, opportunity: Opportunity, *, today: date | None = None):
         self.opportunity = opportunity
         self.today = today or date.today()
+        self.text_fields = ("title", "description", "story_type", "revenue_information", "geographic_relevance", "target_audience", "supporting_information", "client_briefing")
         self.text = " ".join(filter(None, [opportunity.title, opportunity.description, opportunity.story_type, opportunity.revenue_information, opportunity.geographic_relevance, opportunity.target_audience, opportunity.supporting_information, opportunity.client_briefing])).lower()
 
     def contains(self, *terms: str) -> bool:
         return any(term in self.text for term in terms)
+
+    @staticmethod
+    def json_value(value: object) -> object:
+        return str(value) if isinstance(value, (Decimal, date)) else value
+
+    def source_for_factor(self, factor: str) -> tuple[str, object, str]:
+        """Return only source data that caused an existing deterministic rule."""
+        field_rules = {
+            "Funding announcement": ("funding_amount", "The recorded funding amount creates a concrete business-news hook."),
+            "Funding meets the significant-round threshold": ("funding_amount", "The recorded funding amount meets the significant-round threshold."),
+            "Product launch": ("product_launched", "A confirmed product launch is a discrete news event."),
+            "Measurable customer traction": ("customer_count", "The recorded customer count meets the traction threshold."),
+            "Founder or spokesperson available for interviews": ("founder_available", "A confirmed spokesperson gives media an interview option."),
+            "Announcement date is recent": ("product_launch_date", "The recorded date falls within the recent-event window."),
+            "Launch or milestone is upcoming": ("product_launch_date", "The recorded date falls within the upcoming-event window."),
+            "Provided announcement date is old": ("product_launch_date", "The recorded date is outside the recent-event window."),
+            "A target audience is identified": ("target_audience", "The opportunity identifies who the story is intended to reach."),
+            "Meaningful audience reach or traction": ("customer_count", "The recorded customer count meets the traction threshold."),
+            "Credible spokesperson is available": ("founder_available", "A confirmed spokesperson can substantiate the story."),
+        }
+        if factor in field_rules:
+            field, reason = field_rules[factor]
+            return field, self.json_value(getattr(self.opportunity, field)), reason
+        text_rules = {
+            "Acquisition or merger event": ("acquisition", "acquired", "merger"), "Partnership announcement": ("partner", "partnership"),
+            "Geographic expansion": ("expand", "expansion", "new market"), "Measurable business growth or result": ("growth", "yoy", "arr", "revenue", "%"),
+            "Notable milestone, appointment, or research": ("milestone", "appointed", "appointment", "research", "study", "report"),
+            "Strong local or regional relevance": ("uae", "dubai", "abu dhabi", "gcc", "saudi", "middle east"),
+            "Human or founder story": ("founder", "entrepreneur", "journey", "woman-led", "family"),
+            "Recognizable investor or partner signal": ("investor", "backed by", "partnered with"),
+            "Specific numbers support the hook": ("%", "customers", "arr", "revenue", "million"),
+            "Compelling industry relevance": ("ai", "technology", "health", "climate", "fintech", "cyber"),
+            "Differentiated story": ("first", "only", "unique", "differentiated", "patent"),
+            "Briefing identifies a current or upcoming hook": ("today", "this week", "this month", "upcoming", "launching", "current", "2026"),
+            "Connected to a current market trend": ("trend", "regulation", "market demand", "industry interest"),
+            "Official documentation is referenced": ("official", "press release", "documentation", "filing"),
+            "Investor confirmation or named investor": ("investor confirmation", "investor", "funded by"),
+            "Named customer evidence": ("customer testimonial", "named customer", "customer evidence", "case study"),
+            "Independent research or third-party validation": ("independent", "third-party", "research", "report", "validated"),
+            "Consumer relevance": ("consumer", "consumer-facing", "customers"), "Business relevance": ("enterprise", "business", "b2b", "companies"),
+            "Technology relevance": ("ai", "technology", "digital", "software"), "UAE relevance": ("uae", "dubai", "abu dhabi"),
+            "GCC or regional relevance": ("gcc", "saudi", "middle east", "gulf"), "Clear industry or societal impact": ("impact", "reduce", "improve", "efficiency", "access"),
+        }
+        if factor == "Clear headline-worthy event":
+            if self.opportunity.funding_amount is not None: return "funding_amount", self.json_value(self.opportunity.funding_amount), "The recorded funding event provides a clear headline."
+            if self.opportunity.product_launched is True: return "product_launched", True, "The confirmed product launch provides a clear headline."
+            text_rules[factor] = ("acquisition", "partner", "expansion")
+        if factor == "Measurable results are provided" and self.opportunity.customer_count is not None:
+            return "customer_count", self.json_value(self.opportunity.customer_count), "The recorded customer count is a measurable result."
+        terms = text_rules.get(factor)
+        if terms:
+            for field in self.text_fields:
+                value = getattr(self.opportunity, field)
+                if value and any(term in value.lower() for term in terms):
+                    return field, value, "This factor is supported by the recorded opportunity text."
+        return "opportunity_data", None, "No supporting source field was recorded for this limiting factor."
+
+    def enrich_explanations(self, dimensions: dict[str, dict]) -> None:
+        for dimension in dimensions.values():
+            dimension["missing_information"] = [MISSING_INFORMATION_LABELS.get(item, item) for item in dimension["missing_information"]]
+            for factor in dimension["positive_factors"] + dimension["negative_factors"]:
+                source_field, source_value, reason = self.source_for_factor(factor["factor"])
+                factor.update({"source_field": source_field, "source_value": source_value, "reason": reason})
+            dimension["scoring_signals_used"] = [*dimension["positive_factors"], *dimension["negative_factors"]]
 
     def calculate_newsworthiness(self) -> dict:
         d = Dimension("newsworthiness")
@@ -132,5 +212,8 @@ class ScoringService:
 
     def score(self) -> dict:
         dimensions = {"newsworthiness": self.calculate_newsworthiness(), "media_appeal": self.calculate_media_appeal(), "timeliness": self.calculate_timeliness(), "credibility": self.calculate_credibility(), "audience_interest": self.calculate_audience_interest()}
+        self.enrich_explanations(dimensions)
         overall_score = self.calculate_overall_score(dimensions)
-        return {"scoring_version": SCORING_VERSION, "overall_score": overall_score, "potential": self.potential_for(overall_score), "dimensions": dimensions, "weights": {key: str(value) for key, value in WEIGHTS.items()}}
+        weighted_total = sum(Decimal(dimensions[key]["score"]) * weight for key, weight in WEIGHTS.items())
+        calculation = [{"dimension": key, "score": dimensions[key]["score"], "weight": str(weight), "weighted_score": str(Decimal(dimensions[key]["score"]) * weight)} for key, weight in WEIGHTS.items()]
+        return {"scoring_version": SCORING_VERSION, "overall_score": overall_score, "potential": self.potential_for(overall_score), "dimensions": dimensions, "weights": {key: str(value) for key, value in WEIGHTS.items()}, "calculation": {"formula": "Sum of each dimension score multiplied by its configured weight, rounded to the nearest whole number.", "weighted_total": str(weighted_total), "rounded_overall_score": overall_score, "dimensions": calculation}, "overall_explanation": {"strong_points": [factor for item in dimensions.values() for factor in item["positive_factors"]], "areas_holding_back": [factor for item in dimensions.values() for factor in item["negative_factors"]]}}

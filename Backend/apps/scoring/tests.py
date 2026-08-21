@@ -38,8 +38,16 @@ class ScoringServiceTests(TestCase):
     def test_missing_information_is_not_treated_as_a_negative_fact(self):
         self.opportunity.funding_amount = None; self.opportunity.customer_count = None; self.opportunity.product_launch_date = None
         result = ScoringService(self.opportunity, today=date.today()).score()
-        self.assertIn("funding_amount", result["dimensions"]["newsworthiness"]["missing_information"])
-        self.assertIn("announcement_or_launch_date", result["dimensions"]["timeliness"]["missing_information"])
+        self.assertIn("No funding amount provided", result["dimensions"]["newsworthiness"]["missing_information"])
+        self.assertIn("No specific launch or announcement date provided", result["dimensions"]["timeliness"]["missing_information"])
+
+    def test_explanations_are_source_traceable_and_calculation_is_exact(self):
+        result = ScoringService(self.opportunity, today=date.today()).score()
+        factor = result["dimensions"]["newsworthiness"]["positive_factors"][0]
+        self.assertEqual(factor["source_field"], "funding_amount")
+        self.assertEqual(factor["source_value"], "5000000")
+        self.assertTrue(factor["reason"])
+        self.assertEqual(result["calculation"]["rounded_overall_score"], result["overall_score"])
 
     def test_old_and_upcoming_dates_have_explicit_timeliness_signals(self):
         self.opportunity.product_launch_date = date.today() - timedelta(days=31)
@@ -74,3 +82,20 @@ class ScoringApiTests(TestCase):
         history = self.http.get(reverse("api:opportunity-score-history", args=[self.opportunity.pk]))
         self.assertEqual(len(history.json()["data"]["scores"]), 2)
         self.assertEqual(one.json()["data"]["score"]["overall_score"], two.json()["data"]["score"]["overall_score"])
+
+    def test_explanation_is_authorized_and_returns_the_persisted_score_version(self):
+        self.http.force_login(self.owner)
+        score = self.http.post(reverse("api:opportunity-score", args=[self.opportunity.pk]), **self.headers()).json()["data"]["score"]
+        self.opportunity.funding_amount = Decimal("100")
+        self.opportunity.save(update_fields=["funding_amount", "updated_at"])
+        self.http.post(reverse("api:opportunity-score", args=[self.opportunity.pk]), **self.headers())
+        response = self.http.get(reverse("api:opportunity-score-explanation", args=[self.opportunity.pk]))
+        self.assertEqual(response.status_code, 200)
+        explanation = response.json()["data"]
+        self.assertNotEqual(explanation["score_id"], score["id"])
+        historical = self.http.get(f'{reverse("api:opportunity-score-explanation", args=[self.opportunity.pk])}?score_id={score["id"]}').json()["data"]
+        self.assertEqual(historical["score_id"], score["id"])
+        self.assertEqual(historical["overall_score"], score["overall_score"])
+        self.assertIn("calculation", explanation)
+        self.http.force_login(self.other)
+        self.assertEqual(self.http.get(reverse("api:opportunity-score-explanation", args=[self.opportunity.pk])).status_code, 404)
