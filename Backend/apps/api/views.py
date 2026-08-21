@@ -6,6 +6,8 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import transaction
+from django.db.models import Avg, Count, Exists, OuterRef, Q, Subquery
+from django.db.models.functions import TruncDate
 from django.http import HttpRequest, JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -100,6 +102,87 @@ def serialize_opportunity(opportunity: Opportunity) -> dict[str, object]:
         "status": opportunity.status, "created_by": serialize_user(opportunity.created_by) if opportunity.created_by else None,
         "created_at": opportunity.created_at.isoformat(), "updated_at": opportunity.updated_at.isoformat(),
     }
+
+
+def serialize_dashboard_opportunity(opportunity: Opportunity) -> dict[str, object]:
+    return {
+        "id": opportunity.pk,
+        "title": opportunity.title,
+        "client_name": opportunity.client.company_name,
+        "status": opportunity.status,
+        "score": opportunity.latest_score,
+        "potential": opportunity.latest_potential,
+        "last_analyzed": opportunity.latest_scored_at.isoformat() if opportunity.latest_scored_at else None,
+        "attention_reasons": opportunity.attention_reasons,
+    }
+
+
+@require_GET
+@api_login_required
+def dashboard_summary(request: HttpRequest) -> JsonResponse:
+    """Return dashboard aggregates from the user's accessible opportunities and score history."""
+    latest_score = OpportunityScore.objects.filter(opportunity_id=OuterRef("pk")).order_by("-scored_at", "-pk")
+    open_recommendation = StoryStrengtheningRecommendation.objects.filter(
+        opportunity_id=OuterRef("pk"), status__in=[
+            StoryStrengtheningRecommendation.Status.OPEN,
+            StoryStrengtheningRecommendation.Status.IN_PROGRESS,
+        ],
+    )
+    opportunities = accessible_clients(request).filter(opportunities__isnull=False).values("opportunities")
+    queryset = Opportunity.objects.select_related("client").filter(pk__in=opportunities).annotate(
+        latest_score=Subquery(latest_score.values("overall_score")[:1]),
+        latest_potential=Subquery(latest_score.values("potential")[:1]),
+        latest_scored_at=Subquery(latest_score.values("scored_at")[:1]),
+        has_open_recommendation=Exists(open_recommendation),
+    )
+
+    search = request.GET.get("search", "").strip()
+    if search:
+        queryset = queryset.filter(Q(title__icontains=search) | Q(client__company_name__icontains=search))
+    for parameter, field in (("potential", "latest_potential"), ("status", "status")):
+        value = request.GET.get(parameter, "").strip()
+        if value:
+            queryset = queryset.filter(**{field: value})
+    min_score = request.GET.get("min_score")
+    max_score = request.GET.get("max_score")
+    if min_score and min_score.isdigit(): queryset = queryset.filter(latest_score__gte=int(min_score))
+    if max_score and max_score.isdigit(): queryset = queryset.filter(latest_score__lte=int(max_score))
+    analyzed_from = request.GET.get("analyzed_from", "").strip()
+    analyzed_to = request.GET.get("analyzed_to", "").strip()
+    if analyzed_from: queryset = queryset.filter(latest_scored_at__date__gte=analyzed_from)
+    if analyzed_to: queryset = queryset.filter(latest_scored_at__date__lte=analyzed_to)
+
+    rows = list(queryset)
+    for item in rows:
+        reasons = []
+        if item.status == Opportunity.Status.DRAFT: reasons.append("Draft opportunity")
+        if item.latest_score is None: reasons.append("Not analyzed")
+        elif item.latest_score < 40: reasons.append("Low score")
+        if item.has_open_recommendation: reasons.append("Open strengthening actions")
+        item.attention_reasons = reasons
+
+    analyzed = [item for item in rows if item.latest_score is not None]
+    counts = {potential: sum(item.latest_potential == potential for item in analyzed) for potential in ("HIGH", "MEDIUM", "LOW")}
+    score_buckets = {
+        "80-100": sum(item.latest_score is not None and item.latest_score >= 80 for item in rows),
+        "60-79": sum(item.latest_score is not None and 60 <= item.latest_score < 80 for item in rows),
+        "40-59": sum(item.latest_score is not None and 40 <= item.latest_score < 60 for item in rows),
+        "0-39": sum(item.latest_score is not None and item.latest_score < 40 for item in rows),
+    }
+    history = OpportunityScore.objects.filter(opportunity_id__in=[item.pk for item in rows]).annotate(day=TruncDate("scored_at")).values("day").annotate(
+        analyzed_count=Count("id"), average_score=Avg("overall_score"), high_count=Count("id", filter=Q(potential="HIGH")),
+    ).order_by("day")
+    trends = [{"date": item["day"].isoformat(), "analyzed_count": item["analyzed_count"], "average_score": round(item["average_score"], 1), "high_count": item["high_count"]} for item in history]
+    return success({
+        "summary": {
+            "total_opportunities": len(rows), "potential_counts": counts, "average_score": round(sum(item.latest_score for item in analyzed) / len(analyzed), 1) if analyzed else None,
+            "requiring_attention": sum(bool(item.attention_reasons) for item in rows), "score_buckets": score_buckets,
+            "recent_opportunities": [serialize_dashboard_opportunity(item) for item in sorted(analyzed, key=lambda item: item.latest_scored_at, reverse=True)[:8]],
+            "top_opportunities": [serialize_dashboard_opportunity(item) for item in sorted(analyzed, key=lambda item: item.latest_score, reverse=True)[:5]],
+            "attention_opportunities": [serialize_dashboard_opportunity(item) for item in sorted((item for item in rows if item.attention_reasons), key=lambda item: (item.latest_score is not None, item.latest_score or -1))[:8]],
+            "trends": trends,
+        },
+    })
 
 
 def serialize_extraction(extraction: OpportunityExtraction) -> dict[str, object]:
@@ -214,11 +297,22 @@ def opportunity_from_payload(payload: dict[str, object], *, created_by: User, ex
 @api_login_required
 def opportunities(request: HttpRequest) -> JsonResponse:
     if request.method == "GET":
-        queryset = Opportunity.objects.select_related("client", "created_by").filter(client__in=accessible_clients(request)).distinct()
+        latest_score = OpportunityScore.objects.filter(opportunity_id=OuterRef("pk")).order_by("-scored_at", "-pk")
+        queryset = Opportunity.objects.select_related("client", "created_by").filter(client__in=accessible_clients(request)).annotate(
+            latest_potential=Subquery(latest_score.values("potential")[:1]),
+            latest_score_value=Subquery(latest_score.values("overall_score")[:1]),
+        ).distinct()
         client_id = request.GET.get("client_id")
         if client_id:
             if not client_id.isdigit(): return error("validation_error", "client_id must be an integer.", details={"client_id": ["Provide a valid client ID."]})
             queryset = queryset.filter(client_id=int(client_id))
+        search = request.GET.get("search", "").strip()
+        if search: queryset = queryset.filter(Q(title__icontains=search) | Q(client__company_name__icontains=search))
+        for parameter, field in (("status", "status"), ("potential", "latest_potential")):
+            value = request.GET.get(parameter, "").strip()
+            if value: queryset = queryset.filter(**{field: value})
+        if request.GET.get("min_score", "").isdigit(): queryset = queryset.filter(latest_score_value__gte=int(request.GET["min_score"]))
+        if request.GET.get("max_score", "").isdigit(): queryset = queryset.filter(latest_score_value__lte=int(request.GET["max_score"]))
         return success({"opportunities": [serialize_opportunity(item) for item in queryset]})
     payload, response = parse_json_body(request)
     if response: return response
