@@ -38,11 +38,11 @@ docker-compose.yml  Local two-service orchestration
 
 ## Environment variables
 
-Use the example files as a list of required values. Configure them in your shell, deployment platform, or Docker environment; Django and Next.js do not load a `.env` file automatically in this repository. Do not commit `.env` files.
+Use the example files as a list of required values. Django loads `Backend/.env` for local development; deployment platforms should set the same values as environment variables. Next.js loads its local `.env` file. Do not commit either `.env` file.
 
 ```powershell
 Copy-Item Backend/.env.example Backend/.env
-Copy-Item Frontend/pr_scoring_enginge/.env.example Frontend/pr_scoring_enginge/.env.local
+Copy-Item Frontend/pr_scoring_enginge/.env.example Frontend/pr_scoring_enginge/.env
 ```
 
 Backend variables:
@@ -52,6 +52,9 @@ Backend variables:
 - `DJANGO_ALLOWED_HOSTS` — comma-separated hostnames.
 - `DJANGO_TIME_ZONE` — IANA timezone, default `UTC`.
 - `DATABASE_ENGINE`, `DATABASE_NAME`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_HOST`, `DATABASE_PORT` — standard Django database configuration. SQLite is the default; another backend also needs its Python driver installed.
+
+- `GEMINI_API_KEY` — Gemini API key used only by Django for information extraction. Add it to `Backend/.env`; it must never have a `NEXT_PUBLIC_` prefix.
+- `GEMINI_MODEL` — Gemini model used for extraction, default `gemini-2.5-flash`.
 
 Frontend variables:
 

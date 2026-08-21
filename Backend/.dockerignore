@@ -1,4 +1,6 @@
+# Local secrets are passed to the container at runtime via docker-compose,
+# never copied into an image layer.
 .env
+db.sqlite3
 __pycache__/
 *.py[cod]
-db.sqlite3

@@ -11,6 +11,8 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from apps.clients.models import Client
+from apps.extraction.models import ExtractionConfirmation, OpportunityExtraction
+from apps.extraction.services import ExtractionError, FIELD_NAMES, apply_confirmed_values, get_provider, validate_extraction
 from apps.opportunities.models import Opportunity
 from apps.users.models import User
 from services.api_responses import error
@@ -93,6 +95,26 @@ def serialize_opportunity(opportunity: Opportunity) -> dict[str, object]:
     }
 
 
+def serialize_extraction(extraction: OpportunityExtraction) -> dict[str, object]:
+    confirmation = getattr(extraction, "confirmation", None)
+    return {
+        "id": extraction.pk, "opportunity_id": extraction.opportunity_id, "provider": extraction.provider,
+        "model_identifier": extraction.model_identifier, "status": extraction.status,
+        "fields": extraction.extracted_data, "created_at": extraction.created_at.isoformat(),
+        "confirmation": None if confirmation is None else {
+            "confirmed_by": serialize_user(confirmation.confirmed_by) if confirmation.confirmed_by else None,
+            "decisions": confirmation.decisions, "confirmed_at": confirmation.confirmed_at.isoformat(),
+        },
+    }
+
+
+def accessible_opportunity(request: HttpRequest, opportunity_id: int) -> Opportunity | None:
+    try:
+        return Opportunity.objects.select_related("client", "created_by").filter(client__in=accessible_clients(request)).distinct().get(pk=opportunity_id)
+    except Opportunity.DoesNotExist:
+        return None
+
+
 OPPORTUNITY_TEXT_FIELDS = ("description", "story_type", "funding_stage", "revenue_information", "geographic_relevance", "target_audience", "supporting_information")
 
 
@@ -156,8 +178,8 @@ def opportunities(request: HttpRequest) -> JsonResponse:
 @require_http_methods(["GET", "PUT", "DELETE"])
 @api_login_required
 def opportunity_detail(request: HttpRequest, opportunity_id: int) -> JsonResponse:
-    try: opportunity = Opportunity.objects.select_related("client", "created_by").filter(client__in=accessible_clients(request)).distinct().get(pk=opportunity_id)
-    except Opportunity.DoesNotExist: return error("opportunity_not_found", "Opportunity not found.", status=404)
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None: return error("opportunity_not_found", "Opportunity not found.", status=404)
     if request.method == "GET": return success({"opportunity": serialize_opportunity(opportunity)})
     if request.method == "DELETE": opportunity.delete(); return success({"message": "Opportunity deleted."})
     payload, response = parse_json_body(request)
@@ -168,6 +190,72 @@ def opportunity_detail(request: HttpRequest, opportunity_id: int) -> JsonRespons
     assert updated is not None
     updated.save()
     return success({"opportunity": serialize_opportunity(Opportunity.objects.select_related("client", "created_by").get(pk=updated.pk))})
+
+
+@require_POST
+@api_login_required
+def extract_opportunity_information(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    if not opportunity.client_briefing.strip():
+        return error("missing_briefing", "A client briefing is required before extraction.", status=400)
+    try:
+        result, model_identifier = get_provider().extract(opportunity.client_briefing)
+        fields = validate_extraction(result, opportunity.client_briefing)
+    except ExtractionError as exc:
+        return error(exc.code, exc.message, status=504 if exc.code == "ai_provider_timeout" else 502)
+    extraction = OpportunityExtraction.objects.create(opportunity=opportunity, provider="gemini", model_identifier=model_identifier, extracted_data=fields)
+    return success({"extraction": serialize_extraction(extraction)}, status=201)
+
+
+@require_GET
+@api_login_required
+def latest_opportunity_extraction(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    extraction = OpportunityExtraction.objects.filter(opportunity=opportunity).select_related("confirmation__confirmed_by").first()
+    return success({"extraction": serialize_extraction(extraction) if extraction else None})
+
+
+@require_POST
+@api_login_required
+def confirm_opportunity_extraction(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    opportunity = accessible_opportunity(request, opportunity_id)
+    if opportunity is None:
+        return error("opportunity_not_found", "Opportunity not found.", status=404)
+    payload, response = parse_json_body(request)
+    if response: return response
+    assert payload is not None
+    extraction_id, decisions = payload.get("extraction_id"), payload.get("decisions")
+    if not isinstance(extraction_id, int) or not isinstance(decisions, dict) or set(decisions) != set(FIELD_NAMES):
+        return error("validation_error", "Provide decisions for every extracted field.", details={"decisions": ["All extraction fields are required."]})
+    try:
+        extraction = OpportunityExtraction.objects.get(pk=extraction_id, opportunity=opportunity)
+    except OpportunityExtraction.DoesNotExist:
+        return error("extraction_not_found", "Extraction result not found.", status=404)
+    if ExtractionConfirmation.objects.filter(extraction=extraction).exists():
+        return error("extraction_already_confirmed", "This extraction has already been confirmed.", status=409)
+    stored_decisions: dict[str, dict[str, object]] = {}
+    for field in FIELD_NAMES:
+        decision = decisions[field]
+        if not isinstance(decision, dict) or set(decision) != {"action", "value"} or decision["action"] not in {"accepted", "edited", "rejected"}:
+            return error("validation_error", "Each decision must be accepted, edited, or rejected.", details={"decisions": [f"Invalid decision for {field}."]})
+        source = extraction.extracted_data[field]
+        if decision["action"] == "accepted":
+            value = source["value"]
+        elif decision["action"] == "rejected":
+            value = None
+        else:
+            value = decision["value"]
+            if value is None:
+                return error("validation_error", "Edited values cannot be empty.", details={"decisions": [f"Provide an edited value for {field}."]})
+        stored_decisions[field] = {"action": decision["action"], "value": value}
+    apply_confirmed_values(opportunity, stored_decisions)
+    confirmation = ExtractionConfirmation.objects.create(extraction=extraction, confirmed_by=request.user, decisions=stored_decisions)
+    extraction = OpportunityExtraction.objects.select_related("confirmation__confirmed_by").get(pk=extraction.pk)
+    return success({"extraction": serialize_extraction(extraction), "opportunity": serialize_opportunity(Opportunity.objects.select_related("client", "created_by").get(pk=opportunity.pk))})
 
 
 def client_from_payload(payload: dict[str, object], *, created_by: User, existing: Client | None = None) -> tuple[Client | None, list[int] | None, JsonResponse | None]:
