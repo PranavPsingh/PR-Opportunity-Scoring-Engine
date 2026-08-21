@@ -81,6 +81,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 GEMINI_API_BASE_URL = os.getenv("GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
 AI_EXTRACTION_TIMEOUT_SECONDS = int(os.getenv("AI_EXTRACTION_TIMEOUT_SECONDS", "30"))
+AI_ANGLE_TIMEOUT_SECONDS = int(os.getenv("AI_ANGLE_TIMEOUT_SECONDS", "30"))
+# Development diagnostics only. Responses may contain client-provided data, so keep this false in production.
+AI_LOG_RESPONSES = os.getenv("AI_LOG_RESPONSES", str(DEBUG)).lower() in {"1", "true", "yes", "on"}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
