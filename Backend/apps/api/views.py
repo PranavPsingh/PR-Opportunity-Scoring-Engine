@@ -11,6 +11,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from apps.clients.models import Client
+from apps.opportunities.models import Opportunity
 from apps.users.models import User
 from services.api_responses import error
 from services.api_responses import success
@@ -65,10 +66,108 @@ def serialize_client(client: Client) -> dict[str, object]:
 
 
 def accessible_clients(request: HttpRequest):
+    return accessible_clients_for_user(request.user)
+
+
+def accessible_clients_for_user(user: User):
     clients = Client.objects.select_related("created_by").prefetch_related("authorized_consultants")
-    if request.user.role == User.Role.ADMIN:
+    if user.role == User.Role.ADMIN:
         return clients
-    return clients.filter(created_by=request.user) | clients.filter(authorized_consultants=request.user)
+    return clients.filter(created_by=user) | clients.filter(authorized_consultants=user)
+
+
+def serialize_opportunity(opportunity: Opportunity) -> dict[str, object]:
+    return {
+        "id": opportunity.pk, "client_id": opportunity.client_id,
+        "client_name": opportunity.client.company_name if hasattr(opportunity, "client") else None,
+        "title": opportunity.title, "description": opportunity.description, "story_type": opportunity.story_type,
+        "funding_amount": str(opportunity.funding_amount) if opportunity.funding_amount is not None else None,
+        "funding_stage": opportunity.funding_stage, "founder_available": opportunity.founder_available,
+        "product_launched": opportunity.product_launched,
+        "product_launch_date": opportunity.product_launch_date.isoformat() if opportunity.product_launch_date else None,
+        "customer_count": opportunity.customer_count, "revenue_information": opportunity.revenue_information,
+        "geographic_relevance": opportunity.geographic_relevance, "target_audience": opportunity.target_audience,
+        "supporting_information": opportunity.supporting_information, "client_briefing": opportunity.client_briefing,
+        "status": opportunity.status, "created_by": serialize_user(opportunity.created_by) if opportunity.created_by else None,
+        "created_at": opportunity.created_at.isoformat(), "updated_at": opportunity.updated_at.isoformat(),
+    }
+
+
+OPPORTUNITY_TEXT_FIELDS = ("description", "story_type", "funding_stage", "revenue_information", "geographic_relevance", "target_audience", "supporting_information")
+
+
+def opportunity_from_payload(payload: dict[str, object], *, created_by: User, existing: Opportunity | None = None) -> tuple[Opportunity | None, JsonResponse | None]:
+    field_errors: dict[str, list[str]] = {}
+    client_id = payload.get("client_id")
+    title = required_string(payload, "title")
+    briefing = payload.get("client_briefing")
+    if not isinstance(client_id, int): field_errors["client_id"] = ["A client is required."]
+    if not title: field_errors["title"] = ["This field is required."]
+    if not isinstance(briefing, str) or not briefing.strip(): field_errors["client_briefing"] = ["This field is required."]
+    client = None
+    if isinstance(client_id, int):
+        try: client = accessible_clients_for_user(created_by).distinct().get(pk=client_id)
+        except Client.DoesNotExist: field_errors["client_id"] = ["Client not found or not authorized."]
+    status = payload.get("status", Opportunity.Status.DRAFT)
+    if not isinstance(status, str) or status not in Opportunity.Status.values: field_errors["status"] = ["Choose a valid status."]
+    values: dict[str, object] = {"title": title, "client_briefing": briefing, "status": status}
+    for field in OPPORTUNITY_TEXT_FIELDS:
+        value = payload.get(field, "")
+        if not isinstance(value, str): field_errors[field] = ["Provide text."]
+        else: values[field] = value
+    for field in ("founder_available", "product_launched"):
+        value = payload.get(field)
+        if value is not None and not isinstance(value, bool): field_errors[field] = ["Provide true, false, or null."]
+        else: values[field] = value
+    for field in ("funding_amount", "customer_count", "product_launch_date"):
+        value = payload.get(field)
+        if value in (None, ""): values[field] = None
+        else: values[field] = value
+    if field_errors: return None, error("validation_error", "Please correct the highlighted fields.", details=field_errors)
+    opportunity = existing or Opportunity(created_by=created_by)
+    assert client is not None
+    opportunity.client = client
+    for field, value in values.items(): setattr(opportunity, field, value)
+    try: opportunity.full_clean()
+    except ValidationError as exc: return None, error("validation_error", "Please correct the highlighted fields.", details=exc.message_dict)
+    return opportunity, None
+
+
+@require_http_methods(["GET", "POST"])
+@api_login_required
+def opportunities(request: HttpRequest) -> JsonResponse:
+    if request.method == "GET":
+        queryset = Opportunity.objects.select_related("client", "created_by").filter(client__in=accessible_clients(request)).distinct()
+        client_id = request.GET.get("client_id")
+        if client_id:
+            if not client_id.isdigit(): return error("validation_error", "client_id must be an integer.", details={"client_id": ["Provide a valid client ID."]})
+            queryset = queryset.filter(client_id=int(client_id))
+        return success({"opportunities": [serialize_opportunity(item) for item in queryset]})
+    payload, response = parse_json_body(request)
+    if response: return response
+    assert payload is not None
+    opportunity, response = opportunity_from_payload(payload, created_by=request.user)
+    if response: return response
+    assert opportunity is not None
+    opportunity.save()
+    return success({"opportunity": serialize_opportunity(Opportunity.objects.select_related("client", "created_by").get(pk=opportunity.pk))}, status=201)
+
+
+@require_http_methods(["GET", "PUT", "DELETE"])
+@api_login_required
+def opportunity_detail(request: HttpRequest, opportunity_id: int) -> JsonResponse:
+    try: opportunity = Opportunity.objects.select_related("client", "created_by").filter(client__in=accessible_clients(request)).distinct().get(pk=opportunity_id)
+    except Opportunity.DoesNotExist: return error("opportunity_not_found", "Opportunity not found.", status=404)
+    if request.method == "GET": return success({"opportunity": serialize_opportunity(opportunity)})
+    if request.method == "DELETE": opportunity.delete(); return success({"message": "Opportunity deleted."})
+    payload, response = parse_json_body(request)
+    if response: return response
+    assert payload is not None
+    updated, response = opportunity_from_payload(payload, created_by=request.user, existing=opportunity)
+    if response: return response
+    assert updated is not None
+    updated.save()
+    return success({"opportunity": serialize_opportunity(Opportunity.objects.select_related("client", "created_by").get(pk=updated.pk))})
 
 
 def client_from_payload(payload: dict[str, object], *, created_by: User, existing: Client | None = None) -> tuple[Client | None, list[int] | None, JsonResponse | None]:
