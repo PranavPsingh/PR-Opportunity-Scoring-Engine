@@ -20,6 +20,23 @@ from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def load_local_env(path: Path) -> None:
+    """Load simple KEY=VALUE pairs for local development without overriding deployment variables."""
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key, value = key.strip(), value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+load_local_env(BASE_DIR / ".env")
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
@@ -54,7 +71,16 @@ INSTALLED_APPS = [
     'apps.angles',
     'apps.evidence',
     'apps.outcomes',
+    'apps.extraction',
 ]
+
+# Gemini configuration is backend-only. Never use a NEXT_PUBLIC_ prefix for
+# GEMINI_API_KEY: only the Django process may read it.
+AI_EXTRACTION_PROVIDER = os.getenv("AI_EXTRACTION_PROVIDER", "gemini")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_API_BASE_URL = os.getenv("GEMINI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
+AI_EXTRACTION_TIMEOUT_SECONDS = int(os.getenv("AI_EXTRACTION_TIMEOUT_SECONDS", "30"))
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -104,8 +130,10 @@ WSGI_APPLICATION = 'myproject.wsgi.application'
 
 DATABASES = {
     "default": {
-        "ENGINE": os.getenv("DATABASE_ENGINE", "django.db.backends.sqlite3"),
-        "NAME": os.getenv("DATABASE_NAME", str(BASE_DIR / "db.sqlite3")),
+        # Blank values in the checked local .env template should retain the
+        # safe SQLite defaults rather than producing an invalid configuration.
+        "ENGINE": os.getenv("DATABASE_ENGINE") or "django.db.backends.sqlite3",
+        "NAME": os.getenv("DATABASE_NAME") or str(BASE_DIR / "db.sqlite3"),
         "USER": os.getenv("DATABASE_USER", ""),
         "PASSWORD": os.getenv("DATABASE_PASSWORD", ""),
         "HOST": os.getenv("DATABASE_HOST", ""),
